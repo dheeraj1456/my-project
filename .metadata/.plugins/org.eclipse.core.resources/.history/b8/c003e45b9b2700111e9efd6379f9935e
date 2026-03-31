@@ -1,0 +1,75 @@
+package com.example.demo.controller;
+
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import com.example.demo.model.GatePass;
+import com.example.demo.service.GatePassService;
+
+@RestController
+@RequestMapping("/api/pass")
+@CrossOrigin
+public class GatePassController {
+
+    @Autowired
+    private GatePassService service;
+
+    // Create Gate Pass Request
+    @PostMapping("/request")
+    public GatePass requestPass(@RequestBody GatePass pass) {
+        return service.createPass(pass);
+    }
+
+    // Get all Gate Passes
+    @GetMapping("/all")
+    public List<GatePass> getAll() {
+        return service.getAllPasses();
+    }
+
+    // Approve Pass
+    @PutMapping("/approve/{id}")
+    public GatePass approve(@PathVariable Long id) {
+        return service.approvePass(id);
+    }
+
+    @PutMapping("/reject/{id}")
+    public ResponseEntity<?> reject(@PathVariable Long id) {
+        Pass pass = repository.findById(id).orElseThrow();
+
+        pass.setStatus("REJECTED"); // ✅ important
+        repository.save(pass);
+
+        return ResponseEntity.ok(pass);
+    }
+    // Delete Pass
+    @DeleteMapping("/delete/{id}")
+    public void delete(@PathVariable Long id) {
+        service.deletePass(id);
+    }
+
+    // Verify Pass (Security QR Scanner)
+    @GetMapping("/verify/{id}")
+    public ResponseEntity<String> verifyGatePass(@PathVariable Long id){
+
+        GatePass pass = service.getPassById(id);
+
+        if(pass == null){
+            return ResponseEntity.ok("FAKE QR");
+        }
+
+        if(!pass.getStatus().equalsIgnoreCase("APPROVED")){
+            return ResponseEntity.ok("NOT APPROVED");
+        }
+
+        return ResponseEntity.ok("APPROVED");
+    }
+
+    // Get passes for specific student
+    @GetMapping("/student/{rollNo}")
+    public List<GatePass> getStudentPass(@PathVariable String rollNo){
+        return service.getPassByRoll(rollNo);
+    }
+}

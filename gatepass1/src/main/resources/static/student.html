@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard | GatePass Pro</title>
+    <!-- Phospor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <i class="ph-fill ph-student"></i> Student Portal
+        </div>
+        <div class="flex items-center gap-4">
+            <span>Welcome, <strong class="display-username text-gradient">Student</strong></span>
+            <button class="btn btn-outline" data-action="logout" style="padding: 0.5rem 1rem;">
+                <i class="ph-bold ph-sign-out"></i> Logout
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container grid" style="grid-template-columns: 1fr 2fr; margin-top: 2rem;">
+        
+        <!-- Left Column: Request Form & AI -->
+        <div class="flex flex-col gap-4">
+            
+            <div class="glass-panel p-6 animate-fade-in" style="padding: 1.5rem;">
+                <h3 style="margin-bottom: 1rem; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.5rem;">
+                    <i class="ph-fill ph-paper-plane-tilt"></i> Request Gate Pass
+                </h3>
+                
+                <form id="passForm" class="flex flex-col gap-2">
+                    <div class="input-group">
+                        <textarea id="reason" class="input-control" rows="3" placeholder=" " required style="resize: none;"></textarea>
+                        <label for="reason">Reason for leaving</label>
+                    </div>
+
+                    <!-- AI Assistant Button -->
+                    <button type="button" id="btnAiPredict" class="btn btn-outline" style="font-size: 0.85rem; padding: 0.5rem; justify-content: center; width: 100%; margin-top: -10px; margin-bottom: 10px;">
+                        <i class="ph-fill ph-magic-wand text-gradient"></i> Get AI Approval Probability
+                    </button>
+                    <!-- AI Prediction Result -->
+                    <div id="aiResult" style="display: none; font-size: 0.85rem; padding: 0.5rem; background: rgba(99, 102, 241, 0.1); border-left: 3px solid var(--primary); margin-bottom: 10px; border-radius: 4px;"></div>
+
+                    <div class="input-group">
+                        <input type="datetime-local" id="timeSlot" class="input-control" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        Submit Request
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Right Column: My Passes -->
+        <div class="glass-panel animate-fade-in" style="padding: 1.5rem; animation-delay: 0.1s;">
+            <h3 style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.5rem;">
+                <i class="ph-fill ph-clock-counter-clockwise"></i> My Gate Passes
+            </h3>
+
+            <div id="passesContainer" class="grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+                <!-- Loading State -->
+                <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem;">
+                    <i class="ph ph-spinner ph-spin" style="font-size: 2rem;"></i>
+                    <p>Loading passes...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script src="app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Protected Route Check
+            const user = checkAuth('STUDENT');
+            if(!user) return;
+
+            loadMyPasses();
+
+            // Handle AI Prediction
+            document.getElementById('btnAiPredict').addEventListener('click', async () => {
+                const reason = document.getElementById('reason').value;
+                if(!reason.trim()) {
+                    showToast('Please enter a reason first.', 'error');
+                    return;
+                }
+
+                const btn = document.getElementById('btnAiPredict');
+                const resultDiv = document.getElementById('aiResult');
+                
+                btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Analyzing...`;
+                btn.disabled = true;
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/ai/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: reason })
+                    });
+                    
+                    const text = await response.text();
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `<strong>AI Prediction:</strong> ${text}`;
+                    
+                } catch(e) {
+                    showToast('AI service unavailable.', 'error');
+                } finally {
+                    btn.innerHTML = `<i class="ph-fill ph-magic-wand text-gradient"></i> Get AI Approval Probability`;
+                    btn.disabled = false;
+                }
+            });
+
+            // Handle Pass Submission
+            document.getElementById('passForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const reason = document.getElementById('reason').value;
+                const timeSlot = document.getElementById('timeSlot').value;
+                const aiSuggestionText = document.getElementById('aiResult').innerText.replace('AI Prediction:', '').trim();
+                
+                const btn = e.target.querySelector('button[type="submit"]');
+                btn.disabled = true;
+                btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Submitting...`;
+
+                const payload = {
+                    studentName: user.username,
+                    rollNo: user.username, // Assuming username is rollNo for students
+                    reason: reason,
+                    timeSlot: new Date(timeSlot).toLocaleString(),
+                    status: 'PENDING',
+                    aiSuggestion: aiSuggestionText || 'Not checked'
+                };
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/pass/request`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if(response.ok) {
+                        showToast('Gate pass requested successfully!', 'success');
+                        document.getElementById('passForm').reset();
+                        document.getElementById('aiResult').style.display = 'none';
+                        loadMyPasses();
+                    } else {
+                        showToast('Failed to request pass.', 'error');
+                    }
+                } catch(e) {
+                    showToast('Server error.', 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = `Submit Request`;
+                }
+            });
+
+            // Load Passes
+            async function loadMyPasses() {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/pass/student/${user.username}`);
+                    const data = await response.json();
+                    
+                    const container = document.getElementById('passesContainer');
+                    container.innerHTML = '';
+                    
+                    if(data.length === 0) {
+                        container.innerHTML = `
+                            <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem;">
+                                <i class="ph-fill ph-empty" style="font-size: 3rem; opacity: 0.5;"></i>
+                                <p>No gate passes requested yet.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    // Sort newest first by ID
+                    data.sort((a,b) => b.id - a.id);
+
+                    data.forEach(pass => {
+                        let badgeClass = 'badge-pending';
+                        if(pass.status === 'APPROVED') badgeClass = 'badge-approved';
+                        if(pass.status === 'REJECTED') badgeClass = 'badge-rejected';
+
+                        const card = document.createElement('div');
+                        card.className = 'glass-card flex flex-col gap-2';
+                        card.innerHTML = `
+                            <div class="flex justify-between items-center" style="margin-bottom: 0.5rem;">
+                                <span class="badge ${badgeClass}">${pass.status}</span>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">ID: #${pass.id}</span>
+                            </div>
+                            <h4 style="font-size: 1.1rem; flex-grow: 1;">${pass.reason}</h4>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+                                <i class="ph-fill ph-calendar"></i> ${pass.timeSlot}
+                            </div>
+                            ${pass.aiSuggestion && pass.aiSuggestion !== 'Not checked' ? 
+                              `<div style="font-size: 0.8rem; background: rgba(0,0,0,0.2); padding: 0.4rem; border-radius: 4px; margin-top: 0.5rem;">
+                                 <i class="ph-fill ph-magic-wand text-gradient"></i> AI: ${pass.aiSuggestion}
+                               </div>` : ''}
+                        `;
+                        container.appendChild(card);
+                    });
+                } catch(e) {
+                    document.getElementById('passesContainer').innerHTML = `<p style="color: var(--danger);">Failed to load passes.</p>`;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
